@@ -210,12 +210,12 @@ module app {
             // render title
             var title = this.title,
                 tw = canvas.measureText(title).width;
-            canvas.font = '16px Helvetica';
+            canvas.font = '14px Helvetica';
             canvas.fillStyle = '#999';
             canvas.fillText(
                 this.title,
                 rect.w/2 - tw/2,
-                rect.h - 25);
+                rect.h - 15);
         }
 
         /**
