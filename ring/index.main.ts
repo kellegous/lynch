@@ -1,4 +1,5 @@
 /// <reference path="jquery.d.ts" />
+/// <reference path="anim.ts" />
 /// <reference path="models.ts" />
 module app {
     interface Pt {
@@ -27,32 +28,6 @@ module app {
         tx: number;
         ty: number;
     }
-
-    /**
-     * A driver for transition style animations. This triggers callbacks at frame-rate granularity with
-     * an adjusted progress parameter.
-     * @param callback the callback function for each update.
-     * @param duration the full duration of the transition in milliseconds.
-     * @param easing an easing function to transform progress before invoking the callback.
-     */
-    var transition = (callback: (p: number) => void, duration: number, easing?: (p: number) => number) => {
-        if (!easing) {
-            // If no easing was provided, use linear easing
-            easing = (p: number) => { return p; }
-        }
-
-        var t0 = Date.now();
-        var tick = () => {
-            var t1 = Date.now(),
-                p = Math.min(1.0, (t1 - t0) / duration);
-            callback(easing(p));
-            if (p < 1.0) {
-                requestAnimationFrame(tick);
-            }
-        };
-
-        requestAnimationFrame(tick);
-    };
 
     /**
      *
@@ -224,14 +199,12 @@ module app {
          */
         private startSendingMessages() {
             this.mode = WorldView.MODE_SEND;
-            transition((pct: number) => {
+            anim.transition((pct: number) => {
                 this.pct = pct;
                 this.draw();
-
-                if (pct >= 1.0) {
-                    this.startReceivingMessages();
-                }
-            }, 1000);
+            }, 1000).whenDone(() => {
+                this.startReceivingMessages();
+            });
         }
 
         /**
@@ -240,14 +213,12 @@ module app {
          */
         private startReceivingMessages() {
             this.mode = WorldView.MODE_RECV;
-            transition((pct: number) => {
+            anim.transition((pct: number) => {
                 this.pct = pct;
                 this.draw();
-
-                if (pct >= 1.0) {
-                    this.start();
-                }
-            }, 150);
+            }, 150).whenDone(() => {
+                this.start();
+            });
         }
 
         /**

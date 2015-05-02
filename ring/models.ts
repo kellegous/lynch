@@ -290,7 +290,6 @@ module models {
             setup() {
                 var uid = this.uid,
                     phase = this.phase;
-                console.log('uid', uid, 'phase', phase);
                 this.toL.send({
                     uid: uid,
                     out: true,
