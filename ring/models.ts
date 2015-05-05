@@ -131,8 +131,6 @@ module models {
 
         public time = 0;
 
-        private next = 0;
-
         public nodes: T[] = [];
 
         /**
@@ -387,6 +385,90 @@ module models {
                 var to = nodes[(i + 1) % n];
                 fr.toL = to.frR = new ChannelImpl<Msg>(world, fr, to);
                 to.toR = fr.frL = new ChannelImpl<Msg>(world, to, fr);
+            });
+
+            return world;
+        };
+    }
+
+    export module timeslice {
+        class NodeImpl {
+            public leader: boolean = false;
+
+            public toL: Sender<number>;
+            public frR: Receiver<number>;
+
+            private hasReceived: boolean = false;
+
+            constructor(public world: WorldImpl<NodeImpl>,
+                        public uid: number) {
+                world.nodes.push(this);
+             }
+
+           setup() {
+           }
+
+            update() {
+                var uid = this.uid,
+                    world = this.world,
+                    time = world.time,
+                    n = world.nodes.length,
+                    s = (uid - 1) * n + 1,
+                    msg = this.frR.recv();
+
+                if (time == s && !this.hasReceived) {
+                    this.leader = true;
+                    world.nodeDidBecomeLeader.raise(this);
+                    this.toL.send(uid);
+                } else if (msg != null && msg != uid) {
+                    this.hasReceived = true;
+                    this.toL.send(msg);
+                }
+            }
+        }
+
+        export var New = (n: number): World<Node> => {
+            var world = new WorldImpl<NodeImpl>(),
+                nodes = MakeUids(n).map((uid: number) => {
+                    return new NodeImpl(world, uid + 2);
+                });
+
+            nodes.forEach((fr: NodeImpl, i: number) => {
+                var to = nodes[(i + 1) % n];
+                fr.toL = to.frR = new ChannelImpl<number>(world, fr, to);
+            });
+            return world;
+        };
+    }
+
+    export module variablespeeds {
+        class NodeImpl {
+            public leader: boolean = false;
+
+            public toL: Sender<number>;
+            public frR: Receiver<number>;
+
+            constructor(public world: WorldImpl<NodeImpl>,
+                        public uid: number) {
+                world.nodes.push(this);
+            }
+
+            setup() {
+            }
+
+            update() {
+            }
+        }
+
+        export var New = (n: number) => {
+            var world = new WorldImpl<NodeImpl>(),
+                nodes = MakeUids(n).map((uid: number) => {
+                    return new NodeImpl(world, uid + 2);
+                });
+
+            nodes.forEach((fr: NodeImpl, i: number) => {
+                var to = nodes[(i + 1) % n];
+                fr.toL = to.frR = new ChannelImpl<number>(world, fr, to);
             });
 
             return world;

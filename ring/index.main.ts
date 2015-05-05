@@ -231,7 +231,7 @@ module app {
 
             this.world.update();
 
-            if (this.msgsSending.length == 0) {
+            if (this.msgsSending.length == 0 && this.leader != null) {
                 this.draw();
                 return;
             }
@@ -277,14 +277,14 @@ module app {
                 {x: w/2, y: 0, w: w/2, h: h/2}),
 
             new WorldView(
-                "Idle",
-                models.bogus.New(10),
+                "Time Slice",
+                models.timeslice.New(10),
                 canvas,
                 {x: 0, y: h/2, w: w/2, h: h/2}),
 
             new WorldView(
-                "Idle",
-                models.bogus.New(10),
+                "Variable Speeds",
+                models.variablespeeds.New(10),
                 canvas,
                 {x: w/2, y: h/2, w: w/2, h: h/2}),
         ];

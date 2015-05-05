@@ -31,6 +31,9 @@ module anim {
      * @param callback the callback function for each update.
      * @param duration the full duration of the transition in milliseconds.
      * @return a transition object offering more options.
+     *
+     * TODO(knorton): This should have the option of falling back onto a timer for offscreen
+     * progress perhaps only at transition edges.
      */
     export var transition = (callback: (p: number) => void, duration: number) : Transition => {
         var tx = new Tx,
