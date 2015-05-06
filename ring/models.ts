@@ -449,15 +449,38 @@ module models {
             public toL: Sender<number>;
             public frR: Receiver<number>;
 
+            private min: number = 1e12;
+            private minWasSent: boolean = true;
+
             constructor(public world: WorldImpl<NodeImpl>,
                         public uid: number) {
                 world.nodes.push(this);
             }
 
             setup() {
+                this.toL.send(this.uid, this.uid);
             }
 
             update() {
+                var msg = this.frR.recv(),
+                    min = this.min,
+                    time = this.world.time;
+
+                if (msg === this.uid) {
+                    this.leader = true;
+                    this.world.nodeDidBecomeLeader.raise(this);
+                    return;
+                }
+
+                if (msg != null && msg < min) {
+                    this.min = msg;
+                    this.minWasSent = false;
+                }
+
+                if (!this.minWasSent && (time % Math.pow(2, this.min)) == 0) {
+                    this.toL.send(this.min, this.min);
+                    this.minWasSent = true;
+                }
             }
         }
 
