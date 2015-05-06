@@ -21,6 +21,7 @@ module app {
         to: models.Node;
         fr: models.Node;
         msg: any;
+        origin: number;
     }
 
     interface NodeLoc extends Pt {
@@ -54,11 +55,12 @@ module app {
                     public canvas: Canvas,
                     public rect: Rect) {
 
-            world.messageWasSent.tap((msg: any, fr: models.Node, to: models.Node) => {
+            world.messageWasSent.tap((msg: any, fr: models.Node, to: models.Node, origin: number) => {
                 this.msgsSending.push({
                     to: to,
                     fr: fr,
                     msg: msg,
+                    origin: origin,
                 });
 
                 this.nodesRecieving[to.uid] = true;
@@ -132,6 +134,27 @@ module app {
 
             canvas.clearRect(0, 0, size.w, size.h);
 
+            // render origin lines
+            if (mode == WorldView.MODE_SEND || mode == WorldView.MODE_RECV) {
+                msgs.forEach((msg: ActiveMsg) => {
+                    var frPt = locsByUid[msg.fr.uid],
+                        toPt = locsByUid[msg.to.uid],
+                        spct = (mode == WorldView.MODE_RECV) ? 1.0 : pct,
+                        x = frPt.x + (toPt.x - frPt.x) * spct,
+                        y = frPt.y + (toPt.y - frPt.y) * spct,
+                        orPt = locsByUid[msg.origin];
+
+                    canvas.strokeStyle = '#999';
+                    canvas.setLineDash([2, 6]);
+                    canvas.beginPath();
+                    canvas.moveTo(x, y);
+                    canvas.lineTo(orPt.x, orPt.y);
+                    canvas.stroke();
+                });
+
+                canvas.setLineDash([]);
+            }
+
             // render edges
             canvas.strokeStyle = '#eee';
             canvas.lineWidth = 2;
@@ -149,7 +172,9 @@ module app {
                     var frPt = locsByUid[msg.fr.uid],
                         toPt = locsByUid[msg.to.uid],
                         x = frPt.x + (toPt.x - frPt.x) * pct,
-                        y = frPt.y + (toPt.y - frPt.y) * pct;
+                        y = frPt.y + (toPt.y - frPt.y) * pct,
+                        origin = locsByUid[msg.origin];
+
                     canvas.fillStyle = '#999';
                     canvas.strokeStyle = '#777';
                     canvas.beginPath();

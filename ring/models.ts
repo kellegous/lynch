@@ -52,7 +52,7 @@ module models {
      * An interface that represents only the sending side of a channel.
      */
     interface Sender<T> {
-        send(msg: T);
+        send(msg: T, origin: number);
     }
 
     /**
@@ -87,12 +87,13 @@ module models {
          * Send the message into the channel. The message will be available
          * on the receiving end only after update.
          */
-        send(msg: T) {
+        send(msg: T, origin: number) {
             this.arrive = msg;
             this.world.messageWasSent.raise(
                 msg,
                 this.fr,
-                this.to);
+                this.to,
+                origin);
         }
 
         /**
@@ -201,14 +202,14 @@ module models {
             }
 
             setup() {
-                this.toL.send(this.uid);
+                this.toL.send(this.uid, this.uid);
             }
 
             update() {
                 var uid = this.uid,
                     msg = this.frR.recv();
                 if (msg > uid) {
-                    this.toL.send(msg);
+                    this.toL.send(msg, msg);
                 } else if (msg == uid) {
                     this.leader = true;
                     this.world.nodeDidBecomeLeader.raise(this);
@@ -292,12 +293,12 @@ module models {
                     uid: uid,
                     out: true,
                     ttl: Math.pow(2, phase)
-                });
+                }, uid);
                 this.toR.send({
                     uid: uid,
                     out: true,
                     ttl: Math.pow(2, phase)
-                });
+                }, uid);
             }
 
             update() {
@@ -314,13 +315,13 @@ module models {
                                     uid: msgL.uid,
                                     out: true,
                                     ttl: msgL.ttl - 1
-                                });
+                                }, msgL.uid);
                             } else {
                                 this.toL.send({
                                     uid: msgL.uid,
                                     out: false,
                                     ttl: 1
-                                });
+                                }, msgL.uid);
                             }
                         } else if (msgL.uid == uid) {
                             this.leader = true;
@@ -331,7 +332,7 @@ module models {
                             uid: msgL.uid,
                             out: false,
                             ttl: 1
-                        });
+                        }, msgL.uid);
                     }
                 }
 
@@ -344,13 +345,13 @@ module models {
                                     uid: msgR.uid,
                                     out: true,
                                     ttl: msgR.ttl - 1
-                                });
+                                }, msgR.uid);
                             } else {
                                 this.toR.send({
                                     uid: msgR.uid,
                                     out: false,
                                     ttl: 1
-                                });
+                                }, msgR.uid);
                             }
                         } else if (msgR.uid == uid) {
                             this.leader = true;
@@ -361,7 +362,7 @@ module models {
                             uid: msgR.uid,
                             out: false,
                             ttl: 1
-                        });
+                        }, msgR.uid);
                     }
                 }
 
@@ -419,10 +420,10 @@ module models {
                 if (time == s && !this.hasReceived) {
                     this.leader = true;
                     world.nodeDidBecomeLeader.raise(this);
-                    this.toL.send(uid);
+                    this.toL.send(uid, uid);
                 } else if (msg != null && msg != uid) {
                     this.hasReceived = true;
-                    this.toL.send(msg);
+                    this.toL.send(msg, msg);
                 }
             }
         }
