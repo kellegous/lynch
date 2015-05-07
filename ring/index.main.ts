@@ -34,9 +34,6 @@ module app {
         private locs: NodeLoc[] = [];
         private locsByUid: NodeLoc[] = [];
 
-        // de-normalized model data
-        private nodesRecieving: boolean[] = [];
-
         // rendering modes
         private mode: number = WorldView.MODE_IDLE;
         private pct: number = 0.0;
@@ -105,8 +102,12 @@ module app {
                 first = locs[0],
                 n = locs.length,
                 locsByUid = this.locsByUid,
-                nodesReceiving = this.nodesRecieving,
                 pct = this.pct;
+
+            var nodesReceiving: boolean[] = [];
+            world.sentMsgs.forEach((msg: models.SentMsg<any>) => {
+                nodesReceiving[msg.dst.uid] = true;
+            });
 
             canvas.clearRect(0, 0, size.w, size.h);
 
@@ -227,7 +228,7 @@ module app {
             anim.transition((pct: number) => {
                 this.pct = pct;
                 this.draw();
-            }, 150).whenDone(() => {
+            }, 300).whenDone(() => {
                 this.start();
             });
         }
@@ -239,7 +240,6 @@ module app {
             var world = this.world;
 
             this.mode = WorldView.MODE_IDLE;
-            this.nodesRecieving = [];
 
             world.update();
 
