@@ -1,27 +1,30 @@
 /// <reference path="signal.ts" />
 module models {
 
+    export interface SentMsg<T> {
+        data: T;
+        dst: Node;
+        src: Node;
+        origin: Node;
+    }
+
+    export interface HeldMsg<T> {
+        data: T;
+        at: Node;
+        origin: Node;
+    }
+
     /**
      * A simulation world where time is progressed by continuous
      * calls to upate.
      */
     export interface World<T extends Node> {
 
-        /**
-         * Raised when a message is sent in any channel with the following
-         * parameters.
-         * msg: any - the message being sent
-         * fr: Node - the node from which the message was sent
-         * to: Node - the node to which the message was sent
-         */
-        messageWasSent: Signal;
+        sentMsgs: SentMsg<any>[];
 
-        /**
-         * Raised when a node is self-elected leader with the following
-         * parameters.
-         * node: Node - the leader
-         */
-        nodeDidBecomeLeader: Signal;
+        heldMsgs: HeldMsg<any>[];
+
+        leader: Node;
 
         /**
          * A monotonically increasing clock that will increase by 1 on each
@@ -38,6 +41,8 @@ module models {
          * Progress the simulation by one step.
          */
         update();
+
+        hasHalted(): boolean;
     }
 
     /**
@@ -45,7 +50,6 @@ module models {
      */
     export interface Node {
         uid: number;
-        leader: boolean;
     }
 
     /**
@@ -78,8 +82,8 @@ module models {
         private depart: T = null;
 
         constructor(private world : WorldImpl<any>,
-                    private fr: any,
-                    private to: any) {
+                    private fr: Node,
+                    private to: Node) {
             world.chans.push(this);
         }
 
@@ -88,12 +92,14 @@ module models {
          * on the receiving end only after update.
          */
         send(msg: T, origin: number) {
+            var world = this.world;
             this.arrive = msg;
-            this.world.messageWasSent.raise(
-                msg,
-                this.fr,
-                this.to,
-                origin);
+            this.world.sentMsgs.push({
+                data: msg,
+                src: this.fr,
+                dst: this.to,
+                origin: world.nodesByUid[origin],
+            });
         }
 
         /**
@@ -126,13 +132,17 @@ module models {
      */
     class WorldImpl<T extends NodeImpl> {
 
-        public messageWasSent = new Signal;
-
-        public nodeDidBecomeLeader = new Signal;
-
         public time = 0;
 
         public nodes: T[] = [];
+
+        public sentMsgs: SentMsg<any>[] = [];
+
+        public heldMsgs: HeldMsg<any>[] = [];
+
+        public leader: Node;
+
+        public nodesByUid: T[] = [];
 
         /**
          * All active channels in the world.
@@ -141,13 +151,21 @@ module models {
 
         public update() {
             var nodes = this.nodes,
-                chans = this.chans;
+                chans = this.chans,
+                nodesByUid = this.nodesByUid;
 
             if (this.time == 0) {
+                nodes.forEach((node: T) => {
+                    nodesByUid[node.uid] = node;
+                });
+
                 nodes.forEach((node: NodeImpl) => {
                     node.setup();
                 });
             } else {
+                this.sentMsgs.length = 0;
+                this.heldMsgs.length = 0;
+
                 chans.forEach((chan: ChannelImpl<any>) => {
                     chan.update();
                 });
@@ -158,6 +176,10 @@ module models {
             }
 
             this.time++;
+        }
+
+        hasHalted(): boolean {
+            return this.leader && this.sentMsgs.length == 0;
         }
     }
 
@@ -206,13 +228,13 @@ module models {
             }
 
             update() {
-                var uid = this.uid,
+                var world = this.world,
+                    uid = this.uid,
                     msg = this.frR.recv();
                 if (msg > uid) {
                     this.toL.send(msg, msg);
                 } else if (msg == uid) {
-                    this.leader = true;
-                    this.world.nodeDidBecomeLeader.raise(this);
+                    world.leader = this;
                 }
             }
         }
@@ -302,7 +324,8 @@ module models {
             }
 
             update() {
-                var msgL = this.frL.recv(),
+                var world = this.world,
+                    msgL = this.frL.recv(),
                     msgR = this.frR.recv(),
                     uid = this.uid;
 
@@ -324,8 +347,7 @@ module models {
                                 }, msgL.uid);
                             }
                         } else if (msgL.uid == uid) {
-                            this.leader = true;
-                            this.world.nodeDidBecomeLeader.raise(this);
+                            world.leader = this;
                         }
                     } else if (msgL.uid != uid) { // inbound
                         this.toR.send({
@@ -354,8 +376,7 @@ module models {
                                 }, msgR.uid);
                             }
                         } else if (msgR.uid == uid) {
-                            this.leader = true;
-                            this.world.nodeDidBecomeLeader.raise(this);
+                            world.leader = this;
                         }
                     } else if (msgR.uid != uid) {
                         this.toL.send({
@@ -394,8 +415,6 @@ module models {
 
     export module timeslice {
         class NodeImpl {
-            public leader: boolean = false;
-
             public toL: Sender<number>;
             public frR: Receiver<number>;
 
@@ -418,8 +437,7 @@ module models {
                     msg = this.frR.recv();
 
                 if (time == s && !this.hasReceived) {
-                    this.leader = true;
-                    world.nodeDidBecomeLeader.raise(this);
+                    world.leader = this;
                     this.toL.send(uid, uid);
                 } else if (msg != null && msg != uid) {
                     this.hasReceived = true;
@@ -449,12 +467,13 @@ module models {
             public toL: Sender<number>;
             public frR: Receiver<number>;
 
-            private min: number = 1e12;
+            private min: number;
             private minWasSent: boolean = true;
 
             constructor(public world: WorldImpl<NodeImpl>,
                         public uid: number) {
                 world.nodes.push(this);
+                this.min = uid;
             }
 
             setup() {
@@ -462,13 +481,13 @@ module models {
             }
 
             update() {
-                var msg = this.frR.recv(),
+                var world = this.world,
+                    msg = this.frR.recv(),
                     min = this.min,
                     time = this.world.time;
 
                 if (msg === this.uid) {
-                    this.leader = true;
-                    this.world.nodeDidBecomeLeader.raise(this);
+                    world.leader = this;
                     return;
                 }
 
@@ -480,6 +499,14 @@ module models {
                 if (!this.minWasSent && (time % Math.pow(2, this.min)) == 0) {
                     this.toL.send(this.min, this.min);
                     this.minWasSent = true;
+                }
+
+                if (!this.minWasSent) {
+                    world.heldMsgs.push({
+                        data: this.min,
+                        at: this,
+                        origin: world.nodesByUid[this.min],
+                    });
                 }
             }
         }

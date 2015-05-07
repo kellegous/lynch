@@ -17,13 +17,6 @@ module app {
     interface Canvas extends CanvasRenderingContext2D {
     }
 
-    interface ActiveMsg {
-        to: models.Node;
-        fr: models.Node;
-        msg: any;
-        origin: number;
-    }
-
     interface NodeLoc extends Pt {
         uid: number;
         tx: number;
@@ -42,8 +35,6 @@ module app {
         private locsByUid: NodeLoc[] = [];
 
         // de-normalized model data
-        private leader: Pt;
-        private msgsSending: ActiveMsg[] = [];
         private nodesRecieving: boolean[] = [];
 
         // rendering modes
@@ -54,21 +45,6 @@ module app {
                     public world: models.World<models.Node>,
                     public canvas: Canvas,
                     public rect: Rect) {
-
-            world.messageWasSent.tap((msg: any, fr: models.Node, to: models.Node, origin: number) => {
-                this.msgsSending.push({
-                    to: to,
-                    fr: fr,
-                    msg: msg,
-                    origin: origin,
-                });
-
-                this.nodesRecieving[to.uid] = true;
-            });
-
-            world.nodeDidBecomeLeader.tap((node: models.Node) => {
-                this.leader = this.locsByUid[node.uid];
-            });
         }
 
         /**
@@ -122,32 +98,41 @@ module app {
          *
          */
         private render(canvas: Canvas, size: Sz) {
-            var mode = this.mode,
+            var world = this.world,
+                mode = this.mode,
                 locs = this.locs,
                 nodes = this.world.nodes,
                 first = locs[0],
                 n = locs.length,
                 locsByUid = this.locsByUid,
                 nodesReceiving = this.nodesRecieving,
-                msgs = this.msgsSending,
                 pct = this.pct;
 
             canvas.clearRect(0, 0, size.w, size.h);
 
             // render origin lines
             if (mode == WorldView.MODE_SEND || mode == WorldView.MODE_RECV) {
-                msgs.forEach((msg: ActiveMsg) => {
-                    var frPt = locsByUid[msg.fr.uid],
-                        toPt = locsByUid[msg.to.uid],
+                canvas.strokeStyle = '#999';
+                canvas.setLineDash([2, 6]);
+
+                world.sentMsgs.forEach((msg: models.SentMsg<any>) => {
+                    var frPt = locsByUid[msg.src.uid],
+                        toPt = locsByUid[msg.dst.uid],
                         spct = (mode == WorldView.MODE_RECV) ? 1.0 : pct,
                         x = frPt.x + (toPt.x - frPt.x) * spct,
                         y = frPt.y + (toPt.y - frPt.y) * spct,
-                        orPt = locsByUid[msg.origin];
-
-                    canvas.strokeStyle = '#999';
-                    canvas.setLineDash([2, 6]);
+                        orPt = locsByUid[msg.origin.uid];
                     canvas.beginPath();
                     canvas.moveTo(x, y);
+                    canvas.lineTo(orPt.x, orPt.y);
+                    canvas.stroke();
+                });
+
+                world.heldMsgs.forEach((msg: models.HeldMsg<any>) => {
+                    var atPt = locsByUid[msg.at.uid],
+                        orPt = locsByUid[msg.origin.uid];
+                    canvas.beginPath();
+                    canvas.moveTo(atPt.x, atPt.y);
                     canvas.lineTo(orPt.x, orPt.y);
                     canvas.stroke();
                 });
@@ -168,12 +153,12 @@ module app {
 
             // render messages
             if (mode == WorldView.MODE_SEND) {
-                msgs.forEach((msg: ActiveMsg) => {
-                    var frPt = locsByUid[msg.fr.uid],
-                        toPt = locsByUid[msg.to.uid],
+                world.sentMsgs.forEach((msg: models.SentMsg<any>) => {
+                    var frPt = locsByUid[msg.src.uid],
+                        toPt = locsByUid[msg.dst.uid],
                         x = frPt.x + (toPt.x - frPt.x) * pct,
                         y = frPt.y + (toPt.y - frPt.y) * pct,
-                        origin = locsByUid[msg.origin];
+                        origin = locsByUid[msg.origin.uid];
 
                     canvas.fillStyle = '#999';
                     canvas.strokeStyle = '#777';
@@ -191,10 +176,11 @@ module app {
             // render nodes
             canvas.strokeStyle = '#666';
             locs.forEach((loc: NodeLoc, i: number) => {
-                var r = (mode == WorldView.MODE_RECV && nodesReceiving[nodes[i].uid])
+                var leader = world.leader ? locsByUid[world.leader.uid] : null,
+                    r = (mode == WorldView.MODE_RECV && nodesReceiving[nodes[i].uid])
                     ? 10 + 1.5 * (1 + Math.cos((2 * pct - 1) * Math.PI))
                     : 10;
-                canvas.fillStyle = (this.leader == loc) ? '#f90' : '#09f';
+                canvas.fillStyle = (leader == loc) ? '#f90' : '#09f';
                 canvas.beginPath();
                 canvas.arc(loc.x, loc.y, r, 0, 2*Math.PI, false);
                 canvas.fill();
@@ -250,13 +236,14 @@ module app {
          * Begin a cycle of the animation loop.
          */
         start() {
+            var world = this.world;
+
             this.mode = WorldView.MODE_IDLE;
-            this.msgsSending = [];
             this.nodesRecieving = [];
 
-            this.world.update();
+            world.update();
 
-            if (this.msgsSending.length == 0 && this.leader != null) {
+            if (world.hasHalted()) {
                 this.draw();
                 return;
             }
@@ -279,7 +266,7 @@ module app {
             .css('left', (ww - sz) / 2)
             .css('top', (wh - sz) / 2)
             .appendTo(root).get(0);
-        return canvas.getContext('2d');
+        return <CanvasRenderingContext2D>canvas.getContext('2d');
     };
 
     var Main = () => {
